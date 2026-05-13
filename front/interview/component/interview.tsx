@@ -4,10 +4,12 @@ import { useState, useRef } from 'react';
 export default function Interview() {
   const [messages, setMessages] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [isSent, setIsSent] = useState(true);
   const [status, setStatus] = useState('En attente...');
   const audioRef = useRef<HTMLAudioElement>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const voiceidRef = useRef<string>('');
+  const lastUserAnswerRef = useRef<string>('');
 
   // Démarrer l'enregistrement
   const startRecording = async () => {
@@ -47,22 +49,38 @@ export default function Interview() {
         return;
       }
 
-      const { text: userText } = await transRes.json();
-      console.log(userText);
+      const { text: userAnswer } = await transRes.json();
+      lastUserAnswerRef.current=userAnswer
+      console.log(lastUserAnswerRef.current);
     
 
       // 2. Obtenir la réponse de l'IA
       console.log("Obtenir IA answer");
+      const updatedMessages = [...messages];
 
-      const newMessages = [...messages, { role: 'user', content: userText }];
+      if (updatedMessages.length > 0 && updatedMessages[updatedMessages.length - 1].role == 'user') {
+        updatedMessages.pop(); 
+      }
+
+      const newMessages = [...updatedMessages, { role: 'user', content: lastUserAnswerRef.current }];
       // const newMessages =  userText ;
 
       setMessages(newMessages);
 
+
+
       // const newMessagesJson = { role: 'assistant', content: newMessages };
 
-      if (voiceidRef.current == '') {
       
+    } catch (error) {
+      console.error("Network connection error")
+      setStatus("Error Network"+error)
+    }
+  };
+  const getAnswerfromIA = async () => {
+
+    if (voiceidRef.current == '') {
+        setIsSent(true)
         const idRes = await fetch('/api/voice-init', { method: 'POST'});
         if (!idRes.ok) {
           setStatus("Error Server" + idRes.status)
@@ -77,7 +95,7 @@ export default function Interview() {
       const chatRes = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: userText, voiceId: voiceidRef.current })
+        body: JSON.stringify({ messages: lastUserAnswerRef.current, voiceId: voiceidRef.current })
       });
       console.log("Réponse de l'IA");
 
@@ -88,12 +106,8 @@ export default function Interview() {
       // setMessages(prev => [...prev,data.text ]);
 
       playAudio(data.audio);
-    } catch (error) {
-      console.error("Network connection error")
-      setStatus("Error Network"+error)
-    }
-  };
 
+  }
   const playAudio = (base64: string) => {
     setStatus('L’interviewer parle...');
     const audioSrc = `data:audio/wav;base64,${base64}`;
@@ -119,22 +133,63 @@ export default function Interview() {
         <p className="italic text-gray-500">{status}</p>
         <audio ref={audioRef} onEnded={() => setStatus('À vous de répondre')} />
         
+        {isRecording&&isSent ? (
+          <button
+            onClick={() => { mediaRecorder.current?.stop(); setIsSent(false); }}
+            className="bg-gray-800 text-white px-6 py-2 rounded-full"
+          >
+            ⏹️ Arrêter
+          </button>) : (
+          <div>
+            
+          </div>
+        )}
+
         {!isRecording ? (
+        // CAS : PAS EN TRAIN D'ENREGISTRER
+        isSent ? (
           <button 
             onClick={startRecording}
             className="bg-red-500 text-white px-6 py-2 rounded-full hover:bg-red-600 transition"
           >
             🎤 Commencer à répondre
           </button>
-        ) : (
-          <button 
-            onClick={() => { mediaRecorder.current?.stop(); setIsRecording(false); }}
-            className="bg-gray-800 text-white px-6 py-2 rounded-full"
-          >
-            ⏹️ Arrêter et envoyer
-          </button>
-        )}
+          ) : (
+                <div>
+            
+          </div>
+          
+        )
+      ) : (
+        // CAS : EN TRAIN D'ENREGISTRER
+            !isSent ? (
+              <div>
+              <button 
+                onClick={() => { getAnswerfromIA(); setIsRecording(false)}}
+                className="bg-green-500 text-white px-6 py-2 rounded-full hover:bg-green-600 transition"
+              >
+                🚀 Envoyer la réponse
+              </button>
+              <button 
+                  onClick={() => { startRecording(); setIsSent(true);}}
+                className="bg-red-500 text-white px-6 py-2 rounded-full hover:bg-red-600 transition"
+              >
+                🔄 Réenregistrer
+                </button>
+                </div>
+              
+              
+         
+            ) : (
+            <div>
+            
+          </div>
+          
+        )
+      )}       
       </div>
     </div>
   );
 }
+
+
