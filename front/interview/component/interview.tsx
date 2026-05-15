@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef,useEffect } from 'react';
 
 export default function Interview() {
   const [messages, setMessages] = useState([]);
@@ -10,15 +10,44 @@ export default function Interview() {
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const voiceidRef = useRef<string>('');
   const lastUserAnswerRef = useRef<string>('');
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+
+  useEffect(() => {
+      const getMicrophones = async () => {
+          try {
+          // On demande d'abord la permission pour que Chrome nous donne les VRAIS noms des micros (ex: "AirPods de Thibault")
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+          
+          const allDevices = await navigator.mediaDevices.enumerateDevices();
+          const audioInputs = allDevices.filter(device => device.kind === 'audioinput');
+          
+          setDevices(audioInputs);
+          
+          if (audioInputs.length > 0) {
+              setSelectedDeviceId(audioInputs[audioInputs.length-1].deviceId); // Par défaut, le premier
+          }
+          } catch (err) {
+          console.error("Impossible de lister les micros", err);
+          }
+      };
+
+      getMicrophones();
+      }, []);
 
   // Démarrer l'enregistrement
   const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined 
+    }
+  });
     mediaRecorder.current = new MediaRecorder(stream);
     const chunks: Blob[] = [];
 
     mediaRecorder.current.ondataavailable = (e) => chunks.push(e.data);
     mediaRecorder.current.onstop = async () => {
+      stream.getTracks().forEach(track => track.stop());
       const audioBlob = new Blob(chunks, { type: 'audio/webM' });
       processUserAudio(audioBlob);
     };
@@ -118,6 +147,7 @@ export default function Interview() {
   };
 
   return (
+
     <div className="p-8 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Interview AI</h1>
       
@@ -187,8 +217,28 @@ export default function Interview() {
           
         )
       )}       
-      </div>
+      </div> 
+      
+      <div className="mb-4">
+      <label className="block text-sm font-medium text-gray-700 mb-1">Choix du micro :</label>
+      <select 
+        value={selectedDeviceId} 
+        onChange={(e) => setSelectedDeviceId(e.target.value)}
+        className="border rounded px-3 py-2 bg-gray text-sm w-full max-w-xs"
+      >
+        {devices.map((device) => (
+          <option key={device.deviceId} value={device.deviceId}>
+            {device.label || `Microphone alternatif (${device.deviceId.slice(0, 5)})`}
+          </option>
+        ))}
+      </select>
     </div>
+    </div>
+
+
+    
+
+
   );
 }
 
