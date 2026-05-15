@@ -59,16 +59,20 @@ export const CLOSING_MESSAGES = {
     'x7y8' :  "Merci de votre participation à cet entretien, c'était la dernière question. Un grand merci pour votre temps et pour votre aide précieuse dans ce projet de recherche !"
 };
 
-export const SYSTEM_PROMPT = 
-    `${INTERVIEW_OUTLINE}
+ 
+export const SYSTEM_PROMPT =`${INTERVIEW_OUTLINE}
     
     ${GENERAL_INSTRUCTIONS}
 
     ${CODES}
     `
 
+// export const SYSTEM_PROMPT = 
+    // { "role": "system", "content": FINAL_PROMPT }
+
+
 export const VOICE_INPUT_INSTRUCTIONS = `Pour utiliser la saisie vocale, veuillez cliquer sur 🎤 pour démarrer l'enregistrement. Attendez que l'icône change, puis commencez à parler. Cliquez sur ⏹️ pour arrêter l'enregistrement. La saisie vocale peut ne pas être prise en charge sur certains navigateurs et appareils.`
 
 
-export const AVATAR_INTERVIEWER = "\U0001f393"
-export const AVATAR_RESPONDENT = "🧑"
+export const AVATAR_INTERVIEWER = "🎓"
+export const AVATAR_RESPONDENT = "👤"
