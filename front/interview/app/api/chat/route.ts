@@ -7,16 +7,16 @@ import { NextResponse } from 'next/server';
 const client = new Mistral({ apiKey: process.env.MISTRAL_API_KEY });
 const sampleRate= 16000
 
-const get_wav_duration = (audio_bytes) => {
-  const binaryString = atob(audio_bytes);
-    const dataSizeInBytes = binaryString.length - 44; // Taille moins l'entête
+// const get_wav_duration = (audio_bytes) => {
+//   const binaryString = atob(audio_bytes);
+//     const dataSizeInBytes = binaryString.length - 44; // Taille moins l'entête
     
-    // En Mono 16-bit, 1 échantillon = 2 octets
-    const totalSamples = dataSizeInBytes / 2; 
+//     // En Mono 16-bit, 1 échantillon = 2 octets
+//     const totalSamples = dataSizeInBytes / 2; 
     
-    return totalSamples / sampleRate;
+//     return totalSamples / sampleRate;
   
-}
+// }
 
 export async function POST(req: Request) {
   const { messages, voiceId } = await req.json();
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     // console.log(messages);
 
     const chatResponse = await client.chat.complete({
-      model: "mistral-large-latest",
+      model: "mistral-large-2512",
       // messages:[{ role: 'user', content: messages }] ,
       messages:messages ,
 
@@ -47,13 +47,13 @@ export async function POST(req: Request) {
     // On convertit l'audio en base64 pour le renvoyer facilement au front
     const audioBase64 = await ttsResponse.audioData;
     // const audioBase64 = Buffer.from(audioBuffer).toString('base64');
-    const duration =get_wav_duration(audioBase64)
+    // const duration =get_wav_duration(audioBase64)
 
 
     return NextResponse.json({
       text: assistantText,
       audio: audioBase64,
-      duration : duration
+      // duration : duration
     });
   } catch (error) {
     console.error(error);

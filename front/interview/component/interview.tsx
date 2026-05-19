@@ -8,8 +8,6 @@ export default function Interview() {
 
 
   const [messages, setMessages] = useState([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isSent, setIsSent] = useState(false);
   const [status, setStatus] = useState('En attente...');
   const audioRef = useRef<HTMLAudioElement>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -19,6 +17,8 @@ export default function Interview() {
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [hasStarted, setHasStarted] = useState(false);
   const [texte, setTexte] = useState("");
+  const statutsBusy = ['L’interviewer parle...','Transcription ...','Réflexion...'];
+
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -78,7 +78,7 @@ export default function Interview() {
 
 
       const data = await response.json();
-      const duration= data.duration*1000
+      // const duration= data.duration*1000
 
       const newMessagesBis= [...newMessages, { role: 'assistant', content: data.text}];
 
@@ -91,10 +91,12 @@ export default function Interview() {
       // ]);
       
       // On joue l'audio de bienvenue
-      playAudio(data.audio);
+      await playAudio(data.audio);
       setStatus('L’interviewer parle...');
 
-      await sleep(duration);
+      setStatus('À vous de répondre');
+ 
+      // await sleep(duration);
       setMessages(newMessagesBis);
 
       
@@ -128,7 +130,6 @@ export default function Interview() {
 
     mediaRecorder.current.start();
 
-    setIsRecording(true);
     setStatus('Je vous écoute...');
     console.log("ECOUTER");
 
@@ -136,7 +137,7 @@ export default function Interview() {
 
   // Envoyer l'audio au serveur pour transcription + réponse
   const processUserAudio = async (blob: Blob) => {
-    setStatus('Transcription et réflexion...');
+    setStatus('Transcription...');
     
     // 1. Transcription (Appel à une route /api/transcribe similaire)
     console.log("Transcription");
@@ -169,6 +170,7 @@ export default function Interview() {
       // const newMessages =  userText ;
 
       setMessages(newMessages);
+      setStatus("Attente de votre choix"); 
 
 
 
@@ -184,6 +186,7 @@ export default function Interview() {
 
     
 
+      setStatus('Réflexion...');
 
       const chatRes = await fetch('/api/chat', {
         method: 'POST',
@@ -193,24 +196,38 @@ export default function Interview() {
       console.log("Réponse de l'IA");
 
     const data = await chatRes.json();
-    const duration= data.duration*1000
+    // const duration= data.duration*1000
     
       // Mettre à jour le chat et lire l'audio
     // setMessages(prev => [...prev,data.text ]);
-    playAudio(data.audio);
-    
-    await sleep(duration);
+    await playAudio(data.audio);
+    setStatus('À vous de répondre');
+
+    // await sleep(duration);
     setMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
     
 
   }
   const playAudio = (base64: string) => {
+    
     setStatus('L’interviewer parle...');
-    const audioSrc = `data:audio/wav;base64,${base64}`;
-    if (audioRef.current) {
-      audioRef.current.src = audioSrc;
-      audioRef.current.play();
-    }
+    // const audioSrc = `data:audio/wav;base64,${base64}`;
+    
+
+    return new Promise((resolve) => {
+      const audio = new Audio(`data:audio/wav;base64,${base64}`);
+      if (audio) {
+      
+          
+          audio.onended = () => {
+            resolve()
+          };
+          audio.play();
+
+      
+      
+      }
+      });
   };
 
   if (!hasStarted) {
@@ -279,20 +296,19 @@ export default function Interview() {
        {/* <div ref={messagesEndRef} /> */}
       </div>
       <div className="flex flex-col items-center gap-4 h-32">
+         {/* Petit icône de chargement qui tourne (Spinner) */}
+        <div className="flex gap-3">
+          {statutsBusy.includes(status)&&<svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>}
         <p className="italic text-gray-500">{status}</p>
+
+        </div>
         
-        {/* L'astuce magique ici : on réinitialise les boutons quand l'IA a fini de parler ! */}
-        <audio 
-          ref={audioRef} 
-          onEnded={() => {
-            setStatus('À vous de répondre');
-            setIsSent(true); 
-            setIsRecording(false);
-          }} 
-        />
 
         {/* ÉTAPE 1 : Prêt à parler */}
-        {!isRecording && isSent && (
+        {(status=='À vous de répondre') && (
           <button 
             onClick={startRecording}
             className="bg-red-500 text-white px-6 py-2 rounded-full hover:bg-red-600 transition shadow-lg"
@@ -302,9 +318,9 @@ export default function Interview() {
         )}
 
         {/* ÉTAPE 2 : En cours d'enregistrement */}
-        {isRecording && isSent && (
+        {(status=='Je vous écoute...') && (
           <button
-            onClick={() => { mediaRecorder.current?.stop(); setIsSent(false); }}
+            onClick={() => { mediaRecorder.current?.stop(); }}
             className="bg-gray-800 text-white px-6 py-2 rounded-full hover:bg-gray-700 transition animate-pulse shadow-lg"
           >
             ⏹️ Arrêter
@@ -312,19 +328,19 @@ export default function Interview() {
         )}
 
         {/* ÉTAPE 3 : Enregistrement terminé, choix de l'utilisateur */}
-        {isRecording && !isSent && (
+        {(status=="Attente de votre choix") && (
           <div className="flex gap-4">
             <button 
               onClick={() => { 
                 getAnswerfromIA(); 
-                setIsRecording(false); // Fait disparaître les boutons pendant que l'IA réfléchit
+
               }}
               className="bg-green-500 text-white px-6 py-2 rounded-full hover:bg-green-600 transition shadow-lg"
             >
               🚀 Envoyer la réponse
             </button>
             <button 
-              onClick={() => { startRecording(); setIsSent(true); }}
+              onClick={() => { startRecording(); }}
               className="bg-red-500 text-white px-6 py-2 rounded-full hover:bg-red-600 transition shadow-lg"
             >
               🔄 Réenregistrer
@@ -333,7 +349,7 @@ export default function Interview() {
         )}
 
         {/* ÉTAPE 4 : L'IA réfléchit ou parle (aucun bouton affiché) */}
-        {!isRecording && !isSent && (
+        {statutsBusy.includes(status) && (
           <div className="text-gray-400">
             {/* Tu pourrais mettre un petit spinner de chargement ici si tu le souhaites */}
           </div>
