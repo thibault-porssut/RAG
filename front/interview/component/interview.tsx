@@ -3,11 +3,17 @@ import { useState, useRef, useEffect } from 'react';
 import { SYSTEM_PROMPT, AVATAR_INTERVIEWER, AVATAR_RESPONDENT,CLOSING_MESSAGES } from '@/app/config/config';
 import ReactMarkdown from 'react-markdown';
 
+
+
 export default function Interview() {
 
 
-
-  const [messages, setMessages] = useState([]);
+  type Message = {
+    role: 'system' | 'user' | 'assistant'
+    content: string
+  }
+  type ClosingKey = keyof typeof CLOSING_MESSAGES
+  const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState('En attente...');
   const audioRef = useRef<HTMLAudioElement>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -69,7 +75,7 @@ export default function Interview() {
       }
     
       try {
-        const newMessages = [{ role: 'system', content: SYSTEM_PROMPT }];
+        const newMessages: Message[] = [{ role: 'system', content: SYSTEM_PROMPT }];
         setMessages(newMessages)
         getAnswerfromIA(newMessages)
         
@@ -145,7 +151,7 @@ export default function Interview() {
         updatedMessages.pop();
       }
 
-      const newMessages = [...updatedMessages, { role: 'user', content: lastUserAnswerRef.current }];
+      const newMessages : Message[] = [...updatedMessages, { role: 'user', content: lastUserAnswerRef.current }];
   
 
       setMessages(newMessages);
@@ -157,13 +163,13 @@ export default function Interview() {
       setStatus("Error Network" + error)
     }
   };
-  const getAnswerfromIA = async(messagesReceived:string) => {
+  const getAnswerfromIA = async(messagesReceived?: Message[]) => {
 
     const messageTemp= messagesReceived ||messages
    
 
     let chatRes;
-    let data;
+    let data: { text: string } | undefined
     let success = false;
     
     // On essaie jusqu'à 3 fois en cas de Timeout (30s)
@@ -187,16 +193,16 @@ export default function Interview() {
       }
     }
 
-    if (!success) {
+    if (!success|| !data) {
       setStatus('L’IA est indisponible, veuillez réessayer.');
       return; // On arrête tout si les 3 essais ont échoué
     }
     
-    const code = Object.keys(CLOSING_MESSAGES).find(key =>
+    const code = Object.keys(CLOSING_MESSAGES).find((key):key is ClosingKey =>
       data.text.includes(key)
     );
 
-    const newMessages = CLOSING_MESSAGES[code] || data.text
+    const newMessages  = code ? CLOSING_MESSAGES[code]: data.text
 
     const audioRes = await fetch('/api/tts', {
       method: 'POST',
@@ -210,7 +216,7 @@ export default function Interview() {
     setStatus('À vous de répondre');
 
     // await sleep(duration);
-    setMessages(prev => [...prev, { role: 'assistant', content: newMessages }]);
+    setMessages(prev  => [...prev, { role: 'assistant', content: newMessages }]);
     
 
   }

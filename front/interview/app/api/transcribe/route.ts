@@ -39,24 +39,24 @@ export async function POST(audioBytes: Request) {
   const full_transcription: string[] = []
   try {
       
-    for await (const event of client.transcribeStream(
+    for await (const event  of client.transcribeStream(
       pcmStream,
       "voxtral-mini-transcribe-realtime-2602",
       { audioFormat }
     )) {
   
       if (event.type == 'transcription.text.delta') {
-        process.stdout.write(event.text);
-        full_transcription.push(event.text)
+        const text = (event as any).text;
+        full_transcription.push(text )
       }
-      else if (event.type == 'transcription.done') {
-        process.stdout.write("\nTranscription done.\n");
+      else if (event.type == 'transcription.done') {;
         break;
       }
       else if (event.type === "error") {
-        const errorMessage = typeof event.error.message === "string"
-          ? event.error.message
-          : JSON.stringify(event.error.message);
+        const error = (event as any).error;
+        const errorMessage = typeof error.message === "string"
+          ? error.message
+          : JSON.stringify(error.message);
         console.error(`\nTranscription error: ${errorMessage}`);
         process.exitCode = 1;
         break;
