@@ -19,41 +19,19 @@ const sampleRate= 16000
 // }
 
 export async function POST(req: Request) {
-  const { messages, voiceId } = await req.json();
+  const { messages } = await req.json();
 
   try {
-    console.log("1. Chat Completion");
-    // console.log(messages);
-
+  
     const chatResponse = await client.chat.complete({
       model: "mistral-large-2512",
-      // messages:[{ role: 'user', content: messages }] ,
       messages:messages ,
 
     });
     const assistantText = chatResponse.choices[0].message.content;
 
-    console.log("Text to Speech");
-    // console.log(assistantText);
-    const ttsResponse = await client.audio.speech.complete({
-      model: "voxtral-mini-tts-2603",
-      input: assistantText,
-      voiceId: voiceId,
-      responseFormat: "wav",
-    });
-      
-    console.log("convertit l'audio en base64");
-
-    // On convertit l'audio en base64 pour le renvoyer facilement au front
-    const audioBase64 = await ttsResponse.audioData;
-    // const audioBase64 = Buffer.from(audioBuffer).toString('base64');
-    // const duration =get_wav_duration(audioBase64)
-
-
     return NextResponse.json({
       text: assistantText,
-      audio: audioBase64,
-      // duration : duration
     });
   } catch (error) {
     console.error(error);

@@ -69,7 +69,6 @@ export async function POST(audioBytes: Request) {
     return;
   }
   finally {
-    // console.log('ICI'+full_transcription.join())
     return NextResponse.json({
           text: full_transcription.join("")
         });

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { SYSTEM_PROMPT, AVATAR_INTERVIEWER, AVATAR_RESPONDENT } from '@/app/config/config';
+import { SYSTEM_PROMPT, AVATAR_INTERVIEWER, AVATAR_RESPONDENT,CLOSING_MESSAGES } from '@/app/config/config';
 import ReactMarkdown from 'react-markdown';
 
 export default function Interview() {
@@ -12,139 +12,122 @@ export default function Interview() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const voiceidRef = useRef<string>('');
+  // const isInitializedRef = useRef<bool>(false);
   const lastUserAnswerRef = useRef<string>('');
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [hasStarted, setHasStarted] = useState(false);
   const [texte, setTexte] = useState("");
-  const statutsBusy = ['L’interviewer parle...','Transcription ...','Réflexion...'];
+  const statutsBusy = ['Initialisation de l’entretien...', 'L’interviewer parle...', 'Transcription...', 'Réflexion...'];
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const globalStreamRef = useRef<MediaStream | null>(null);
 
 
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   useEffect(() => {
-      const getMicrophones = async () => {
-          try {
-          // On demande d'abord la permission pour que Chrome nous donne les VRAIS noms des micros (ex: "AirPods de Thibault")
-          await navigator.mediaDevices.getUserMedia({ audio: true });
+    const getMicrophones = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        globalStreamRef.current = stream;
           
-          const allDevices = await navigator.mediaDevices.enumerateDevices();
-          const audioInputs = allDevices.filter(device => device.kind === 'audioinput');
+        const allDevices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = allDevices.filter(device => device.kind === 'audioinput');
           
-          setDevices(audioInputs);
+        setDevices(audioInputs);
           
-          if (audioInputs.length > 0) {
-              setSelectedDeviceId(audioInputs[audioInputs.length-1].deviceId); // Par défaut, le premier
-          }
-          } catch (err) {
-          console.error("Impossible de lister les micros", err);
-          }
-      };
+        if (audioInputs.length > 0) {
+          setSelectedDeviceId(audioInputs[audioInputs.length - 1].deviceId); // Par défaut, le premier
+        }
+      } catch (err) {
+        console.error("Impossible de lister les micros", err);
+      }
+    };
 
-      getMicrophones();
+    getMicrophones();
   }, []);
   
   useEffect(() => {
     if (!hasStarted) return;
-  const initializeAI = async () => {
-    setStatus('Initialisation de l’entretien...');
-    if (voiceidRef.current == '') {
-        const idRes = await fetch('/api/voice-init', { method: 'POST'});
+
+    // if (isInitializedRef.current) return;
+    // isInitializedRef.current = true; // On verrouille immédiatement
+
+    const initializeAI = async () => {
+      setStatus('Initialisation de l’entretien...');
+      if (voiceidRef.current == '') {
+        const idRes = await fetch('/api/voice-init', { method: 'POST' });
         if (!idRes.ok) {
           setStatus("Error Server" + idRes.status)
           return;
         }
 
         const { text: voiceID } = await idRes.json();
-        voiceidRef.current=voiceID
+        voiceidRef.current = voiceID
       }
     
-    try {
-      // On envoie juste un tableau avec le system prompt pour "réveiller" l'IA
-      const newMessages = [{ role: 'system', content: SYSTEM_PROMPT }];
+      try {
+        const newMessages = [{ role: 'system', content: SYSTEM_PROMPT }];
+        setMessages(newMessages)
+        getAnswerfromIA(newMessages)
+        
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            messages:newMessages,
-            voiceId: voiceidRef.current 
-        })
-      });
+      } catch (error) {
+        console.error("Erreur d'initialisation", error);
+      }
+    };
 
-      // const newMessages =  userText ;
+    initializeAI();
+  }, [hasStarted]);
 
-      // setMessages(newMessages);
-
-
-      const data = await response.json();
-      // const duration= data.duration*1000
-
-      const newMessagesBis= [...newMessages, { role: 'assistant', content: data.text}];
-
-
-      
-      // On ajoute la réponse de bienvenue de l'IA dans le chat
-      // setMessages([
-      //   { role: 'system', content: SYSTEM_PROMPT },
-      //   { role: 'assistant', content: data.text }
-      // ]);
-      
-      // On joue l'audio de bienvenue
-      await playAudio(data.audio);
-      setStatus('L’interviewer parle...');
-
-      setStatus('À vous de répondre');
- 
-      // await sleep(duration);
-      setMessages(newMessagesBis);
-
-      
-
-    } catch (error) {
-      console.error("Erreur d'initialisation", error);
-    }
-  };
-
-  initializeAI();
-}, [hasStarted]);
+  useEffect(() => {
+    return () => {
+      // Ferme proprement le moteur audio si le composant est détruit
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close();
+      }
+    };
+  }, []);
 
 
    
   // Démarrer l'enregistrement
   const startRecording = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined 
-    }
-  });
+      audio: {
+        deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined
+      }
+    });
     mediaRecorder.current = new MediaRecorder(stream);
     const chunks: Blob[] = [];
 
-    mediaRecorder.current.ondataavailable = (e) => chunks.push(e.data);
+    mediaRecorder.current.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); }
     mediaRecorder.current.onstop = async () => {
       stream.getTracks().forEach(track => track.stop());
-      const audioBlob = new Blob(chunks, { type: 'audio/webM' });
+      const audioBlob = new Blob(chunks, { type: 'audio/webm' });
       processUserAudio(audioBlob);
     };
 
     mediaRecorder.current.start();
 
     setStatus('Je vous écoute...');
-    console.log("ECOUTER");
 
   };
 
   // Envoyer l'audio au serveur pour transcription + réponse
   const processUserAudio = async (blob: Blob) => {
+
+    if (blob.size === 0) {
+      setStatus("Erreur: Aucun son capté. Veuillez réenregistrer.");
+      return; 
+    }
     setStatus('Transcription...');
     
-    // 1. Transcription (Appel à une route /api/transcribe similaire)
-    console.log("Transcription");
 
     const formData = new FormData();
-    formData.append('file', blob);
-    console.log("FETCH");
+    formData.append('file', blob, 'audio.webm');
     
     try {
       const transRes = await fetch('/api/transcribe', { method: 'POST', body: formData });
@@ -154,80 +137,166 @@ export default function Interview() {
       }
 
       const { text: userAnswer } = await transRes.json();
-      lastUserAnswerRef.current=userAnswer
-      console.log(lastUserAnswerRef.current);
-    
+      lastUserAnswerRef.current = userAnswer
 
-      // 2. Obtenir la réponse de l'IA
-      console.log("Obtenir IA answer");
       const updatedMessages = [...messages];
 
       if (updatedMessages.length > 0 && updatedMessages[updatedMessages.length - 1].role == 'user') {
-        updatedMessages.pop(); 
+        updatedMessages.pop();
       }
 
       const newMessages = [...updatedMessages, { role: 'user', content: lastUserAnswerRef.current }];
-      // const newMessages =  userText ;
+  
 
       setMessages(newMessages);
-      setStatus("Attente de votre choix"); 
-
-
-
-      // const newMessagesJson = { role: 'assistant', content: newMessages };
+      setStatus("Attente de votre choix");
 
       
     } catch (error) {
       console.error("Network connection error")
-      setStatus("Error Network"+error)
+      setStatus("Error Network" + error)
     }
   };
-  const getAnswerfromIA = async () => {
+  const getAnswerfromIA = async(messagesReceived:string) => {
 
+    const messageTemp= messagesReceived ||messages
+   
+
+    let chatRes;
+    let data;
+    let success = false;
     
+    // On essaie jusqu'à 3 fois en cas de Timeout (30s)
+    for (let i = 0; i < 3; i++) {
+      try {
+        if (i > 0) setStatus(`L'IA prend du temps, tentative ${i + 1}/3...`);
+        
+        chatRes = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: messageTemp })
+        });
 
-      setStatus('Réflexion...');
+        if (chatRes.ok) {
+          data = await chatRes.json();
+          success = true;
+          break; // Si ça a marché, on sort de la boucle
+        }
+      } catch (error) {
+        console.error(`Tentative ${i + 1} échouée`, error);
+      }
+    }
 
-      const chatRes = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: messages, voiceId: voiceidRef.current })
-      });
-      console.log("Réponse de l'IA");
-
-    const data = await chatRes.json();
-    // const duration= data.duration*1000
+    if (!success) {
+      setStatus('L’IA est indisponible, veuillez réessayer.');
+      return; // On arrête tout si les 3 essais ont échoué
+    }
     
-      // Mettre à jour le chat et lire l'audio
-    // setMessages(prev => [...prev,data.text ]);
-    await playAudio(data.audio);
+    const code = Object.keys(CLOSING_MESSAGES).find(key =>
+      data.text.includes(key)
+    );
+
+    const newMessages = CLOSING_MESSAGES[code] || data.text
+
+    const audioRes = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages:newMessages , voiceId: voiceidRef.current })
+    });
+
+    const dataAudio = await audioRes.json();
+
+    await playAudio(dataAudio.audio);
     setStatus('À vous de répondre');
 
     // await sleep(duration);
-    setMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: newMessages }]);
     
 
   }
-  const playAudio = (base64: string) => {
+  // const playAudio = (base64: string) => {
     
-    setStatus('L’interviewer parle...');
-    // const audioSrc = `data:audio/wav;base64,${base64}`;
+  //   setStatus('L’interviewer parle...');
+  //   // const audioSrc = `data:audio/wav;base64,${base64}`;
     
 
-    return new Promise((resolve) => {
-      const audio = new Audio(`data:audio/wav;base64,${base64}`);
-      if (audio) {
+  //   return new Promise((resolve) => {
+  //     if (audioRef.current) {
+  //       audioRef.current.pause();
+  //       audioRef.current.src = ""; // Vide la mémoire du son précédent
+  //     }
+      
+  //     audioRef.current = new Audio(`data:audio/wav;base64,${base64}`);
+  //     if (audioRef.current) {
       
           
-          audio.onended = () => {
-            resolve()
-          };
-          audio.play();
+  //     audioRef.current.onended = () => resolve(true);
+        
+  //       audioRef.current.onerror = () => {
+  //         console.error("Erreur de lecture audio");
+  //         resolve(true);
+  //       };
+
+  //       audioRef.current.play().catch(e => {
+  //         console.error("Lecture bloquée par le navigateur", e);
+  //         resolve(true);
+  //       });
+  //     } else {
+  //       resolve(true);
 
       
       
-      }
-      });
+  //     }
+  //     });
+  // };
+  const playAudio = async (base64: string) => {
+    setStatus('L’interviewer parle...');
+
+    // 1. Initialisation paresseuse de l'AudioContext au premier message
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    const ctx = audioCtxRef.current;
+
+    // Si le contexte est en pause (sécurité navigateur), on le réactive
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+
+    // 2. Si un son jouait déjà, on le stoppe proprement
+    if (audioSourceRef.current) {
+      try { audioSourceRef.current.stop(); } catch(e) {}
+    }
+
+    // 3. Conversion ultra-rapide du Base64 en tableau de bytes binaires
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    // 4. Décodage de l'audio sur un thread séparé du processeur
+    const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
+
+    return new Promise((resolve) => {
+      // 5. Création du nœud de lecture
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      
+      // On garde une référence pour pouvoir le couper au message suivant
+      audioSourceRef.current = source;
+
+      // Quand le son se termine naturellement
+      source.onended = () => {
+        resolve(true);
+      };
+
+      // 6. Lancement immédiat sans latence
+      source.start(0);
+    });
   };
 
   if (!hasStarted) {
@@ -331,7 +400,8 @@ export default function Interview() {
         {(status=="Attente de votre choix") && (
           <div className="flex gap-4">
             <button 
-              onClick={() => { 
+              onClick={() => {
+                setStatus('Réflexion...');
                 getAnswerfromIA(); 
 
               }}
@@ -351,7 +421,7 @@ export default function Interview() {
         {/* ÉTAPE 4 : L'IA réfléchit ou parle (aucun bouton affiché) */}
         {statutsBusy.includes(status) && (
           <div className="text-gray-400">
-            {/* Tu pourrais mettre un petit spinner de chargement ici si tu le souhaites */}
+   
           </div>
         )}
         
@@ -367,18 +437,3 @@ export default function Interview() {
 
   );
 }
-
-
-
-// {/* ÉTAPE 4 : L'IA réfléchit ou parle (aucun bouton affiché) */}
-//   {!isRecording && !isSent && (
-//     <div className="flex items-center gap-3 text-blue-600 font-medium animate-pulse py-2">
-//       {/* Petit icône de chargement qui tourne (Spinner) */}
-//       <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-//         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-//         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-//       </svg>
-//       <span>L'assistant a la parole...</span>
-//     </div>
-//   )}
-
