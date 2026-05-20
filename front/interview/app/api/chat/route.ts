@@ -28,7 +28,7 @@ export async function POST(req: Request) {
       messages:messages ,
 
     });
-    const assistantText = chatResponse.choices[0].message.content;
+    const assistantText = chatResponse.choices?.[0]?.message?.content ?? "";
 
     return NextResponse.json({
       text: assistantText,
