@@ -2,6 +2,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { SYSTEM_PROMPT, AVATAR_INTERVIEWER, AVATAR_RESPONDENT,CLOSING_MESSAGES } from '@/app/config/config';
 import ReactMarkdown from 'react-markdown';
+import type RecordRTC from 'recordrtc';
+
 
 
 
@@ -16,7 +18,7 @@ export default function Interview() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState('En attente...');
   const audioRef = useRef<HTMLAudioElement>(null);
-  const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const mediaRecorder = useRef<RecordRTC | null>(null);
   const voiceidRef = useRef<string>('');
   // const isInitializedRef = useRef<bool>(false);
   const lastUserAnswerRef = useRef<string>('');
@@ -100,26 +102,82 @@ export default function Interview() {
 
    
   // Démarrer l'enregistrement
-  const startRecording = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined
-      }
+  // const startRecording = async () => {
+  //   const stream = await navigator.mediaDevices.getUserMedia({
+  //     audio: {
+  //       deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined
+  //     }
+  //   });
+  //   // mediaRecorder.current = new MediaRecorder(stream);
+  //   mediaRecorder.current = new RecordRTC(stream, {
+  //     type: 'audio',
+  //     mimeType: 'audio/wav',         // RecordRTC va créer un conteneur WAV (PCM)
+  //     desiredSampRate: 16000,        // Échantillonnage à 16kHz
+  //     numberOfAudioChannels: 1,      // Mono
+  //   });
+    
+  
+  //   const chunks: Blob[] = [];
+
+  //   mediaRecorder.current.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); }
+  //   mediaRecorder.current.onstop = async () => {
+  //     stream.getTracks().forEach(track => track.stop());
+  //     const audioBlob = new Blob(chunks, { type: 'audio/pcm' }).slice(44);
+  //     processUserAudio(audioBlob);
+  //   };
+
+  //   mediaRecorder.current.startRecording()
+
+  //   setStatus('Je vous écoute...');
+
+  // };
+// 1. Modifier le démarrage de l'enregistrement
+const startRecording = async () => {
+  const RecordRTCModule = (await import('recordrtc')).default;
+  
+  const stream = globalStreamRef.current;
+    if (!stream) {
+      console.error('No media stream available');
+      setStatus('Aucun flux audio disponible');
+      return;
+    }
+
+
+
+    // On instancie RecordRTC et on le stocke dans ta ref
+    mediaRecorder.current = new RecordRTCModule(stream, {
+      type: 'audio',
+      mimeType: 'audio/wav',         // Crée un conteneur WAV
+      desiredSampRate: 16000,        // Échantillonnage à 16kHz
+      recorderType: RecordRTCModule.StereoAudioRecorder,
+      numberOfAudioChannels: 1,      // Mono
     });
-    mediaRecorder.current = new MediaRecorder(stream);
-    const chunks: Blob[] = [];
 
-    mediaRecorder.current.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); }
-    mediaRecorder.current.onstop = async () => {
-      stream.getTracks().forEach(track => track.stop());
-      const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-      processUserAudio(audioBlob);
-    };
-
-    mediaRecorder.current.start();
+    // Avec RecordRTC, on lance simplement la méthode dédiée
+    mediaRecorder.current.startRecording();
 
     setStatus('Je vous écoute...');
+  };
 
+  
+// 2. Modifier la fin de l'enregistrement (à l'endroit où tu coupes le micro)
+  const stopRecording = async () => {
+    const recorder = mediaRecorder.current;
+    if (!recorder) return;
+
+    setStatus('Transcription en cours...');
+
+    //  callback stopRecording, ou l'on récupère l'audio
+    recorder.stopRecording(() => {
+      // 1. On récupère le gros Blob WAV généré par RecordRTC
+      const wavBlob = recorder.getBlob();
+      
+      // 2. On retire l'en-tête de 44 octets pour obtenir du PCM linéaire pur (s16le)
+      const rawPcmBlob = wavBlob.slice(44, wavBlob.size, 'audio/pcm');
+      
+      // 3. On envoie le PCM pur à ton API Mistral
+      processUserAudio(rawPcmBlob);
+    });
   };
 
   // Envoyer l'audio au serveur pour transcription + réponse
@@ -395,7 +453,7 @@ export default function Interview() {
         {/* ÉTAPE 2 : En cours d'enregistrement */}
         {(status=='Je vous écoute...') && (
           <button
-            onClick={() => { mediaRecorder.current?.stop(); }}
+            onClick={stopRecording}
             className="bg-gray-800 text-white px-6 py-2 rounded-full hover:bg-gray-700 transition animate-pulse shadow-lg"
           >
             ⏹️ Arrêter

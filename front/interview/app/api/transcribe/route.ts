@@ -25,12 +25,12 @@ export async function POST(audioBytes: Request) {
   const pcmStream = new PassThrough();
   const inputStream = Readable.from(buffer)
   
-  ffmpeg(inputStream)
-            .toFormat('s16le')      // Format PCM 16 bits Little Endian
-            .audioChannels(1)       // Mono (Mistral préfère)
-            .audioFrequency(16000)  // 16kHz comme demandé dans ta config
-            .on('error', (err) => console.error('FFmpeg Error:', err))
-            .pipe(pcmStream);       // Envoie le résultat dans notre pcmStream
+  // ffmpeg(inputStream)
+  //           .toFormat('s16le')      // Format PCM 16 bits Little Endian
+  //           .audioChannels(1)       // Mono (Mistral préfère)
+  //           .audioFrequency(16000)  // 16kHz comme demandé dans ta config
+  //           .on('error', (err) => console.error('FFmpeg Error:', err))
+  //           .pipe(pcmStream);       // Envoie le résultat dans notre pcmStream
 
   const audioFormat = {
   encoding: AudioEncoding.PcmS16le,
@@ -40,7 +40,7 @@ export async function POST(audioBytes: Request) {
   try {
       
     for await (const event  of client.transcribeStream(
-      pcmStream,
+      inputStream,
       "voxtral-mini-transcribe-realtime-2602",
       { audioFormat }
     )) {
