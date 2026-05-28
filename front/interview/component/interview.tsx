@@ -189,8 +189,9 @@ const getMicrophones = async () => {
           setSelectedDeviceId(audioInputs[0].deviceId); // Par défaut, le premier
         }
         return true;
-      } catch (err) {
+      } catch (err: any) {
         console.error("Impossible de lister les micros", err);
+        alert(`Erreur micro: ${err.name} - ${err.message}`);
         return false;
       }
     };
