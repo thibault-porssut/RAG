@@ -186,7 +186,7 @@ const getMicrophones = async () => {
         setDevices(audioInputs);
           
         if (audioInputs.length > 0) {
-          setSelectedDeviceId(audioInputs[audioInputs.length - 1].deviceId); // Par défaut, le premier
+          setSelectedDeviceId(audioInputs[0].deviceId); // Par défaut, le premier
         }
         return true;
       } catch (err) {
