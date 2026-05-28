@@ -37,28 +37,34 @@ export default function Interview() {
 
   // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  useEffect(() => {
-    const getMicrophones = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  // useEffect(() => {
+  //   const getMicrophones = async () => {
+  //     try {
         
-        globalStreamRef.current = stream;
+  //     const constraints = {
+  //     audio: selectedDeviceId 
+  //       ? { deviceId: { exact: selectedDeviceId } } 
+  //       : true // Utilise le micro par défaut du téléphone (souvent le meilleur)
+  //         };
+  //       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+  //       globalStreamRef.current = stream;
           
-        const allDevices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = allDevices.filter(device => device.kind === 'audioinput');
+  //       const allDevices = await navigator.mediaDevices.enumerateDevices();
+  //       const audioInputs = allDevices.filter(device => device.kind === 'audioinput');
           
-        setDevices(audioInputs);
+  //       setDevices(audioInputs);
           
-        if (audioInputs.length > 0) {
-          setSelectedDeviceId(audioInputs[audioInputs.length - 1].deviceId); // Par défaut, le premier
-        }
-      } catch (err) {
-        console.error("Impossible de lister les micros", err);
-      }
-    };
+  //       if (audioInputs.length > 0) {
+  //         setSelectedDeviceId(audioInputs[audioInputs.length - 1].deviceId); // Par défaut, le premier
+  //       }
+  //     } catch (err) {
+  //       console.error("Impossible de lister les micros", err);
+  //     }
+  //   };
 
-    getMicrophones();
-  }, []);
+  //   getMicrophones();
+  // }, []);
   
   useEffect(() => {
     // if (!hasStarted) return;
@@ -161,6 +167,33 @@ export default function Interview() {
   //   setStatus('Je vous écoute...');
 
   // };
+
+const getMicrophones = async () => {
+      try {
+        
+      const constraints = {
+      audio: selectedDeviceId 
+        ? { deviceId: { exact: selectedDeviceId } } 
+        : true // Utilise le micro par défaut du téléphone (souvent le meilleur)
+          };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        globalStreamRef.current = stream;
+          
+        const allDevices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = allDevices.filter(device => device.kind === 'audioinput');
+          
+        setDevices(audioInputs);
+          
+        if (audioInputs.length > 0) {
+          setSelectedDeviceId(audioInputs[audioInputs.length - 1].deviceId); // Par défaut, le premier
+        }
+        return true;
+      } catch (err) {
+        console.error("Impossible de lister les micros", err);
+        return false;
+      }
+    };
 // 1. Modifier le démarrage de l'enregistrement
 const startRecording = async () => {
   const RecordRTCModule = (await import('recordrtc')).default;
@@ -414,7 +447,11 @@ const startRecording = async () => {
           // onClick={() => texte != '' ? setHasStarted(true) : setHasStarted(false)}
           onClick={async() => {
             texte != '' ? setHasStarted(true) : setHasStarted(false); 
-
+            const microOk = await getMicrophones();
+            if (!microOk) return; // On stoppe si le téléphone a refusé le micro
+            
+          
+          
           }}
 
           
