@@ -30,6 +30,9 @@ export default function Interview() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const globalStreamRef = useRef<MediaStream | null>(null);
+  const preloadedAudioRef = useRef<string | null>(null); // Stockera le Base64 de l'audio
+  const preloadedMessageRef = useRef<string | null>(null); // Stockera le Base64 de l'audio
+  const [isAiAnswer,setAiAnswer] = useState(false); // Version synchrone de ton state hasStarted
 
 
   // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,7 +61,7 @@ export default function Interview() {
   }, []);
   
   useEffect(() => {
-    if (!hasStarted) return;
+    // if (!hasStarted) return;
 
     // if (isInitializedRef.current) return;
     // isInitializedRef.current = true; // On verrouille immédiatement
@@ -75,11 +78,21 @@ export default function Interview() {
         const { text: voiceID } = await idRes.json();
         voiceidRef.current = voiceID
       }
-    
+      
       try {
-        const newMessages: Message[] = [{ role: 'system', content: SYSTEM_PROMPT }];
-        setMessages(newMessages)
-        getAnswerfromIA(newMessages)
+
+          const newMessages: Message[] = [{ role: 'system', content: SYSTEM_PROMPT }];
+          setMessages(newMessages)
+          getAnswerfromIA(newMessages)
+
+     
+          
+        
+      
+        
+     
+         // await sleep(duration);
+       
         
 
       } catch (error) {
@@ -88,7 +101,7 @@ export default function Interview() {
     };
 
     initializeAI();
-  }, [hasStarted]);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -98,6 +111,23 @@ export default function Interview() {
       }
     };
   }, []);
+
+  useEffect( () => {
+    const run = async () => {
+      if (isAiAnswer && hasStarted && preloadedAudioRef.current) {
+        try {
+          await playAudio(preloadedAudioRef.current);
+          setAiAnswer(false);
+
+        } catch (e) { }
+      }
+    }
+    run();
+
+
+
+
+  }, [isAiAnswer,hasStarted]);
 
 
    
@@ -260,21 +290,21 @@ const startRecording = async () => {
       data.text.includes(key)
     );
 
-    const newMessages  = code ? CLOSING_MESSAGES[code]: data.text
+    // const newMessages = 
+    preloadedMessageRef.current=code ? CLOSING_MESSAGES[code] : data.text
 
     const audioRes = await fetch('/api/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages:newMessages , voiceId: voiceidRef.current })
+      body: JSON.stringify({ messages:preloadedMessageRef.current , voiceId: voiceidRef.current })
     });
 
     const dataAudio = await audioRes.json();
+    preloadedAudioRef.current = dataAudio.audio;
+    setAiAnswer(true)
 
-    await playAudio(dataAudio.audio);
-    setStatus('À vous de répondre');
 
-    // await sleep(duration);
-    setMessages(prev  => [...prev, { role: 'assistant', content: newMessages }]);
+   
     
 
   }
@@ -356,6 +386,9 @@ const startRecording = async () => {
       // Quand le son se termine naturellement
       source.onended = () => {
         resolve(true);
+        setMessages(prev  => [...prev, { role: 'assistant', content: preloadedMessageRef.current ?? '' }]);
+        setStatus('À vous de répondre');
+
       };
 
       // 6. Lancement immédiat sans latence
@@ -378,7 +411,13 @@ const startRecording = async () => {
           className="border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
         />
         <button 
-          onClick={() => texte!='' ? setHasStarted(true):setHasStarted(false)}
+          // onClick={() => texte != '' ? setHasStarted(true) : setHasStarted(false)}
+          onClick={async() => {
+            texte != '' ? setHasStarted(true) : setHasStarted(false); 
+
+          }}
+
+          
           className="bg-blue-600 text-white px-8 py-3 rounded-full text-lg hover:bg-blue-700 shadow-lg transition"
         >
           🚀 Commencer l'entretien
@@ -411,7 +450,7 @@ const startRecording = async () => {
       <div className=" p-6 h- overflow-y-auto mb-4 flex flex-col gap-4">
         {messages.filter(m => m.role !== 'system').map((m, i) => (
 
-          <div key={i} className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${m.role === 'user' ? 'bg-blue-800 text-white self-end rounded-tr-none' : 'bg-gray-900 text-white-800 self-start rounded-tl-none'}`}>
+          <div key={i} className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${m.role === 'user' ? 'bg-blue-800 text-white self-end rounded-tr-none' : 'bg-gray-900 text-white self-start rounded-tl-none'}`}>
               
             <div className='flex items-center gap-2 mb-1'>
               <span className='text-xs font-bold uppercase tracking-wider opacity-70'>
@@ -419,7 +458,7 @@ const startRecording = async () => {
               </span>
             </div>
 
-            <div className="text-sm leading-relaxed prose prose-sm max-w-none">
+            <div className="text-sm leading-relaxed prose prose-sm prose-invert max-w-none">
             <ReactMarkdown>{m.content}</ReactMarkdown>
             </div>
           </div>
