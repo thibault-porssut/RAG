@@ -4,10 +4,12 @@ import { SYSTEM_PROMPT, AVATAR_INTERVIEWER, AVATAR_RESPONDENT,CLOSING_MESSAGES }
 import ReactMarkdown from 'react-markdown';
 import type RecordRTC from 'recordrtc';
 
+interface InterviewScreenProps {
+  interviewId: string;
+}
 
 
-
-export default function Interview() {
+export default function InterviewScreen({interviewId}:InterviewScreenProps) {
 
 
   type Message = {
@@ -22,8 +24,8 @@ export default function Interview() {
   const voiceidRef = useRef<string>('');
   // const isInitializedRef = useRef<bool>(false);
   const lastUserAnswerRef = useRef<string>('');
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [hasStarted, setHasStarted] = useState(false);
   const [texte, setTexte] = useState("");
   const statutsBusy = ['Initialisation de l’entretien...', 'L’interviewer parle...', 'Transcription...', 'Réflexion...'];
@@ -32,46 +34,12 @@ export default function Interview() {
   const globalStreamRef = useRef<MediaStream | null>(null);
   const preloadedAudioRef = useRef<string | null>(null); // Stockera le Base64 de l'audio
   const preloadedMessageRef = useRef<string | null>(null); // Stockera le Base64 de l'audio
-  const [isAiAnswer,setAiAnswer] = useState(false); // Version synchrone de ton state hasStarted
+  const [isAiAnswer, setAiAnswer] = useState(false); // Version synchrone de ton state hasStarted
+  
+  
 
-
-  // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  // useEffect(() => {
-  //   const getMicrophones = async () => {
-  //     try {
-        
-  //     const constraints = {
-  //     audio: selectedDeviceId 
-  //       ? { deviceId: { exact: selectedDeviceId } } 
-  //       : true // Utilise le micro par défaut du téléphone (souvent le meilleur)
-  //         };
-  //       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        
-  //       globalStreamRef.current = stream;
-          
-  //       const allDevices = await navigator.mediaDevices.enumerateDevices();
-  //       const audioInputs = allDevices.filter(device => device.kind === 'audioinput');
-          
-  //       setDevices(audioInputs);
-          
-  //       if (audioInputs.length > 0) {
-  //         setSelectedDeviceId(audioInputs[audioInputs.length - 1].deviceId); // Par défaut, le premier
-  //       }
-  //     } catch (err) {
-  //       console.error("Impossible de lister les micros", err);
-  //     }
-  //   };
-
-  //   getMicrophones();
-  // }, []);
   
   useEffect(() => {
-    // if (!hasStarted) return;
-
-    // if (isInitializedRef.current) return;
-    // isInitializedRef.current = true; // On verrouille immédiatement
-
     const initializeAI = async () => {
       setStatus('Initialisation de l’entretien...');
       if (voiceidRef.current == '') {
@@ -87,27 +55,40 @@ export default function Interview() {
       
       try {
 
+        const historyRes = await fetch(`/api/load/${interviewId}`);
+        const historyData = await historyRes.json(); // Renvoie un tableau de messages [{role, content}, ...]
+        console.log('INIT')
+
+        console.log(historyRes)
+        console.log(historyData.userData)
+
+          
+        // if (historyData && historyData.length > 0)
+      if (historyData.userData && historyData.userData.length > 0)
+        {
+          console.log("RELOAD")
+          setMessages(historyData.userData)
+          setStatus('À vous de répondre');
+
+        }
+        else {
+          console.log("NON RELOAD")
           const newMessages: Message[] = [{ role: 'system', content: SYSTEM_PROMPT }];
           setMessages(newMessages)
           getAnswerfromIA(newMessages)
 
-     
-          
-        
-      
-        
-     
-         // await sleep(duration);
-       
-        
 
+        }
+          
+         // await sleep(duration);
+        
       } catch (error) {
         console.error("Erreur d'initialisation", error);
       }
     };
 
     initializeAI();
-  }, []);
+  }, [interviewId]);
 
   useEffect(() => {
     return () => {
@@ -120,7 +101,7 @@ export default function Interview() {
 
   useEffect( () => {
     const run = async () => {
-      if (isAiAnswer && hasStarted && preloadedAudioRef.current) {
+      if (isAiAnswer && preloadedAudioRef.current) {
         try {
           await playAudio(preloadedAudioRef.current);
           setAiAnswer(false);
@@ -130,45 +111,21 @@ export default function Interview() {
     }
     run();
 
+  }, [isAiAnswer]);
 
+  useEffect(() => {
+    getMicrophones()
+    return () => {
+    if (globalStreamRef.current) {
+      globalStreamRef.current.getTracks().forEach(track => track.stop());
+    }
+  };
+  }, [interviewId]
 
-
-  }, [isAiAnswer,hasStarted]);
-
+  );
 
    
-  // Démarrer l'enregistrement
-  // const startRecording = async () => {
-  //   const stream = await navigator.mediaDevices.getUserMedia({
-  //     audio: {
-  //       deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined
-  //     }
-  //   });
-  //   // mediaRecorder.current = new MediaRecorder(stream);
-  //   mediaRecorder.current = new RecordRTC(stream, {
-  //     type: 'audio',
-  //     mimeType: 'audio/wav',         // RecordRTC va créer un conteneur WAV (PCM)
-  //     desiredSampRate: 16000,        // Échantillonnage à 16kHz
-  //     numberOfAudioChannels: 1,      // Mono
-  //   });
-    
-  
-  //   const chunks: Blob[] = [];
-
-  //   mediaRecorder.current.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); }
-  //   mediaRecorder.current.onstop = async () => {
-  //     stream.getTracks().forEach(track => track.stop());
-  //     const audioBlob = new Blob(chunks, { type: 'audio/pcm' }).slice(44);
-  //     processUserAudio(audioBlob);
-  //   };
-
-  //   mediaRecorder.current.startRecording()
-
-  //   setStatus('Je vous écoute...');
-
-  // };
-
-const getMicrophones = async () => {
+  const getMicrophones = async () => {
       try {
         
       const constraints = {
@@ -186,7 +143,8 @@ const getMicrophones = async () => {
         setDevices(audioInputs);
           
         if (audioInputs.length > 0) {
-          setSelectedDeviceId(audioInputs[0].deviceId); // Par défaut, le premier
+            setSelectedDeviceId(audioInputs[0].deviceId); // Par défaut, le premier
+            sessionStorage.setItem('preferred_mic_id', audioInputs[0].deviceId);
         }
         return true;
       } catch (err: any) {
@@ -195,6 +153,7 @@ const getMicrophones = async () => {
         return false;
       }
     };
+
 // 1. Modifier le démarrage de l'enregistrement
 const startRecording = async () => {
   const RecordRTCModule = (await import('recordrtc')).default;
@@ -293,6 +252,8 @@ const startRecording = async () => {
     let chatRes;
     let data: { text: string } | undefined
     let success = false;
+
+    
     
     // On essaie jusqu'à 3 fois en cas de Timeout (30s)
     for (let i = 0; i < 3; i++) {
@@ -325,7 +286,7 @@ const startRecording = async () => {
     );
 
     // const newMessages = 
-    preloadedMessageRef.current=code ? CLOSING_MESSAGES[code] : data.text
+    preloadedMessageRef.current = code ? CLOSING_MESSAGES[code] : data.text
 
     const audioRes = await fetch('/api/tts', {
       method: 'POST',
@@ -335,6 +296,8 @@ const startRecording = async () => {
 
     const dataAudio = await audioRes.json();
     preloadedAudioRef.current = dataAudio.audio;
+    await saveTranscript('assistant', preloadedMessageRef.current ,'',interviewId)
+
     setAiAnswer(true)
 
 
@@ -342,41 +305,7 @@ const startRecording = async () => {
     
 
   }
-  // const playAudio = (base64: string) => {
-    
-  //   setStatus('L’interviewer parle...');
-  //   // const audioSrc = `data:audio/wav;base64,${base64}`;
-    
 
-  //   return new Promise((resolve) => {
-  //     if (audioRef.current) {
-  //       audioRef.current.pause();
-  //       audioRef.current.src = ""; // Vide la mémoire du son précédent
-  //     }
-      
-  //     audioRef.current = new Audio(`data:audio/wav;base64,${base64}`);
-  //     if (audioRef.current) {
-      
-          
-  //     audioRef.current.onended = () => resolve(true);
-        
-  //       audioRef.current.onerror = () => {
-  //         console.error("Erreur de lecture audio");
-  //         resolve(true);
-  //       };
-
-  //       audioRef.current.play().catch(e => {
-  //         console.error("Lecture bloquée par le navigateur", e);
-  //         resolve(true);
-  //       });
-  //     } else {
-  //       resolve(true);
-
-      
-      
-  //     }
-  //     });
-  // };
   const playAudio = async (base64: string) => {
     setStatus('L’interviewer parle...');
 
@@ -430,42 +359,45 @@ const startRecording = async () => {
     });
   };
 
-  if (!hasStarted) {
-  return (
-    <div className="flex h-screen items-center justify-center bg-gray-50">
-      <div className="text-center">
-       
-        <h1 className="text-3xl font-bold mb-6">Prêt pour votre entretien ?</h1>
-        <input
-          id="monChamp"
-          type="text"
-          value={texte} // On lie la valeur à notre état
-          onChange={(e) => setTexte(e.target.value)} // On met à jour l'état à chaque touche sur le clavier
-          placeholder="Tapez votre identifiant.."
-          className="border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
-        />
-        <button 
-          // onClick={() => texte != '' ? setHasStarted(true) : setHasStarted(false)}
-          onClick={async() => {
-            texte != '' ? setHasStarted(true) : setHasStarted(false); 
-            const microOk = await getMicrophones();
-            if (!microOk) return; // On stoppe si le téléphone a refusé le micro
-            
-          
-          
-          }}
+const handleDeviceChange = async (deviceId: string) => {
+  setSelectedDeviceId(deviceId);
+  // sessionStorage.setItem("preferred_mic_id", deviceId);
 
-          
-          className="bg-blue-600 text-white px-8 py-3 rounded-full text-lg hover:bg-blue-700 shadow-lg transition"
-        >
-          🚀 Commencer l'entretien
-        </button>
-        <p className="mt-4 text-gray-500 text-sm">Cliquez pour autoriser l'audio et le micro</p>
-      </div>
-    </div>
-  );
+  // 1. On coupe proprement l'ancien flux pour éteindre le micro actuel
+  if (globalStreamRef.current) {
+    globalStreamRef.current.getTracks().forEach(track => track.stop());
+  }
+
+  // 2. On ouvre le flux sur le nouveau périphérique sélectionné
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { deviceId: { exact: deviceId } }
+    });
+    globalStreamRef.current = stream; // Nouvelle référence pour RecordRTC
+  } catch (err) {
+    console.error("Error loading microphone", err);
+  }
 }
-
+  
+const saveTranscript = async (role: string, content_text: string, path_to_sound: string, user: string) => {
+    try{
+      const payload = {
+        role: role,
+        content_text: content_text,
+        path_to_sound: path_to_sound,
+        user: user
+      }
+      await fetch('/api/transcript_table', {
+        method: 'POST', headers: {
+          'content_type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+    }
+     catch (error) {
+                console.error('Failed to fetch transcript:', error);
+            }
+  } 
   return (
     
     <div className="p-8 max-w-4xl mx-auto">
@@ -473,7 +405,7 @@ const startRecording = async () => {
       <label className="block text-sm font-medium text-gray-400 mb-1">Choix du micro :</label>
       <select 
         value={selectedDeviceId} 
-        onChange={(e) => setSelectedDeviceId(e.target.value)}
+        onChange={(e) => handleDeviceChange(e.target.value)}
         className="border rounded px-3 py-2 bg-gray text-sm w-full max-w-xs"
       >
         {devices.map((device) => (
@@ -541,9 +473,10 @@ const startRecording = async () => {
         {(status=="Attente de votre choix") && (
           <div className="flex gap-4">
             <button 
-              onClick={() => {
+              onClick={async() => {
                 setStatus('Réflexion...');
-                getAnswerfromIA(); 
+                await saveTranscript('user', lastUserAnswerRef.current  ,'',interviewId)
+                await getAnswerfromIA(); 
 
               }}
               className="bg-green-500 text-white px-6 py-2 rounded-full hover:bg-green-600 transition shadow-lg"

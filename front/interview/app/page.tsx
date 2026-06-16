@@ -1,16 +1,10 @@
-'use client';
-
-import Interview from "@/component/interview";
+import Authentification from "@/component/authentification";
 
 
 export default function Home() {
 
-    return (
-       
-        <Interview />
-
-    );
-
+    
+    return (< Authentification />);
 
 
 
